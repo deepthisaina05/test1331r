@@ -1,0 +1,58 @@
+name: Release workflow for dev VOL EDH
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - components/**/VOL**
+      - etc/*dev.tfvars
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to deploy'     
+        required: true
+        default: 'infra_comp'  # Default component if none is specified
+
+jobs:
+  deploy:
+    name: "Terraform deployment"
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform with specified version on the runner
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.5.5
+
+      - name: Configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: "arn:aws:iam::${{ secrets.EDH_DEV_AWS_ACCOUNT }}:role/${{ secrets.EDH_DEV_ROLE_TERRAFORM }}"
+          role-session-name: GithubActionsSession
+          aws-region: "${{ secrets.DEV_AWS_REGION }}"
+
+      - name: Terraform init
+        id: init
+        run: terraform init
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      - name: Terraform plan
+        id: plan
+        if: github.ref == 'refs/heads/develop'
+        run: |
+          COMPONENT=${{ github.event.inputs.component }}
+          DIR="components/code/$COMPONENT/VOL-EDH"
+          ./bin/terraform.sh --action plan --project dev --environment dev --component $DIR --group dev --bucket-prefix devbucket --var-file etc/dev.tfvars --region ${{ secrets.AWS_REGION }} --no-color --
+        continue-on-error: false
+
+      # ... (rest of your steps, unchanged)
